@@ -82,6 +82,7 @@ type stackfreelist struct {
 var emptymspan mspan
 
 func allocmcache() *mcache {
+	print("allocmcache\n")
 	var c *mcache
 	systemstack(func() {
 		lock(&mheap_.lock)
