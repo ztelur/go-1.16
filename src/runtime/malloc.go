@@ -842,18 +842,23 @@ var zerobase uintptr
 
 // nextFreeFast returns the next free object if one is quickly available.
 // Otherwise it returns 0.
+// 使用内存管理单元中的 allocCache 字段，快速找到该字段为 1 的位数
 func nextFreeFast(s *mspan) gclinkptr {
+	// Ctz64 从低位开始数0的个数，全为0则返回64，否则返回值也是其1的位数
 	theBit := sys.Ctz64(s.allocCache) // Is there a free object in the allocCache?
 	if theBit < 64 {
 		result := s.freeindex + uintptr(theBit)
 		if result < s.nelems {
 			freeidx := result + 1
+			// 不能超过 mspan 的可持有对象数量
 			if freeidx%64 == 0 && freeidx != s.nelems {
 				return 0
 			}
+			// 更新 allocCache，freeindex，allocCount
 			s.allocCache >>= uint(theBit + 1)
 			s.freeindex = freeidx
 			s.allocCount++
+			// 返回对应内存 base + index * 元素大小
 			return gclinkptr(result*s.elemsize + s.base())
 		}
 	}
@@ -870,9 +875,11 @@ func nextFreeFast(s *mspan) gclinkptr {
 // Must run in a non-preemptible context since otherwise the owner of
 // c could change.
 func (c *mcache) nextFree(spc spanClass) (v gclinkptr, s *mspan, shouldhelpgc bool) {
+	// 根据spanClass获取 mspan
 	s = c.alloc[spc]
 	shouldhelpgc = false
 	freeIndex := s.nextFreeIndex()
+	// mspan 已经满了，则使用 refill 获取中心缓存中的内存管理单元替换已经不存在可用对象的结构体
 	if freeIndex == s.nelems {
 		// The span is full.
 		if uintptr(s.allocCount) != s.nelems {
@@ -974,6 +981,7 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 
 	shouldhelpgc := false
 	dataSize := size
+	// 获取当前线程的MCache
 	c := getMCache()
 	if c == nil {
 		throw("mallocgc called without a P or outside bootstrapping")
@@ -981,8 +989,14 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 	var span *mspan
 	var x unsafe.Pointer
 	noscan := typ == nil || typ.ptrdata == 0
+	// 小对象是指大小为 16 字节到 32,768 字节的对象
 	if size <= maxSmallSize {
+		// 小于 16 字节不是指针的为微对象 
+		// noscan 是指不是指针，也局势typ为 nil 或者 prtdata = 0
 		if noscan && size < maxTinySize {
+			if debug.printmem != 0 {
+				print("mallocgc tiny allocator noscan size : ", size, "\n")
+			}
 			// Tiny allocator.
 			//
 			// Tiny allocator combines several tiny allocation requests
@@ -1029,7 +1043,11 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 			} else if size&1 == 0 {
 				off = alignUp(off, 2)
 			}
+			// 如果当前偏移加上所需的size小于 maxTinySize，则直接通过运行时会通过基地址和偏移量获取并返回这块内存
 			if off+size <= maxTinySize && c.tiny != 0 {
+				if debug.printmem != 0 {
+					print("mallocgc tiny allocator off : ", off, " size: ", size, " maxTinySize: ", maxTinySize, "\n")
+				}
 				// The object fits into existing tiny block.
 				x = unsafe.Pointer(c.tiny + off)
 				c.tinyoffset = off + size
@@ -1038,30 +1056,42 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 				releasem(mp)
 				return x
 			}
-			// Allocate a new maxTinySize block.
+			// 从线程缓存找到跨度类对应的内存管理单元
 			span = c.alloc[tinySpanClass]
+			// 快速获取空闲的内存
 			v := nextFreeFast(span)
+			// 快速获取不到，则调用 nextFree 中心缓存或者页堆中获取可分配的内存块
 			if v == 0 {
+				if debug.printmem != 0 {
+					print("mallocgc nextFreeFast get fail, nextFree", "\n")
+				}
 				v, span, shouldhelpgc = c.nextFree(tinySpanClass)
+			} else {
+				if debug.printmem != 0 {
+					print("mallocgc nextFreeFast", "\n")
+				}
 			}
 			x = unsafe.Pointer(v)
+			// 清空内存，16字节大小，也就是两个unit64
 			(*[2]uint64)(x)[0] = 0
 			(*[2]uint64)(x)[1] = 0
-			// See if we need to replace the existing tiny block with the new one
-			// based on amount of remaining free space.
+			// 更新 tiny 和 tinyoffset，已备下次使用
 			if size < c.tinyoffset || c.tiny == 0 {
 				c.tiny = uintptr(x)
 				c.tinyoffset = size
 			}
 			size = maxTinySize
 		} else {
+			// 小于 16 字节的指针类型的对象被认为是小对象
 			var sizeclass uint8
+			// 确定待分配的对象大小以及跨度类
 			if size <= smallSizeMax-8 {
 				sizeclass = size_to_class8[divRoundUp(size, smallSizeDiv)]
 			} else {
 				sizeclass = size_to_class128[divRoundUp(size-smallSizeMax, largeSizeDiv)]
 			}
 			size = uintptr(class_to_size[sizeclass])
+			// 生成 span
 			spc := makeSpanClass(sizeclass, noscan)
 			span = c.alloc[spc]
 			v := nextFreeFast(span)
@@ -1074,7 +1104,9 @@ func mallocgc(size uintptr, typ *_type, needzero bool) unsafe.Pointer {
 			}
 		}
 	} else {
+		// 大于 32KB 的大对象
 		shouldhelpgc = true
+		// 不走线程缓存或者中心缓存中获取内存管理单元 而是直接 allocLarge 获取大片内存
 		span = c.allocLarge(size, needzero, noscan)
 		span.freeindex = 1
 		span.allocCount = 1

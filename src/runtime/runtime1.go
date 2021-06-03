@@ -324,6 +324,7 @@ var debug struct {
 	allocfreetrace int32
 	inittrace      int32
 	sbrk           int32
+	printmem int32
 }
 
 var dbgvars = []dbgVar{
@@ -346,6 +347,7 @@ var dbgvars = []dbgVar{
 	{"tracebackancestors", &debug.tracebackancestors},
 	{"asyncpreemptoff", &debug.asyncpreemptoff},
 	{"inittrace", &debug.inittrace},
+	{"printmem", &debug.printmem},
 }
 
 func parsedebugvars() {
