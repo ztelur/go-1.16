@@ -16,6 +16,9 @@ BSD-style license found in the LICENSE file.
 
 #### Binary Distributions
 
+alias sgo='/Users/gbc/Work/go/go-1.16/bin/go'
+
+
 Official binary distributions are available at https://golang.org/dl/.
 
 After downloading a binary release, visit https://golang.org/doc/install
