@@ -206,10 +206,12 @@ func (c *mcache) refill(spc spanClass) {
 }
 
 // allocLarge allocates a span for a large object.
+// 分配大对象
 func (c *mcache) allocLarge(size uintptr, needzero bool, noscan bool) *mspan {
 	if size+_PageSize < size {
 		throw("out of memory")
 	}
+	// 按照 8KB 的倍数在堆上申请内存
 	npages := size >> _PageShift
 	if size&_PageMask != 0 {
 		npages++
@@ -219,7 +221,7 @@ func (c *mcache) allocLarge(size uintptr, needzero bool, noscan bool) *mspan {
 	// necessary. mHeap_Alloc will also sweep npages, so this only
 	// pays the debt down to npage pages.
 	deductSweepCredit(npages*_PageSize, npages)
-
+	// 创建一个跨度类为 0 单独管理对应内存
 	spc := makeSpanClass(0, noscan)
 	s := mheap_.alloc(npages, spc, needzero)
 	if s == nil {

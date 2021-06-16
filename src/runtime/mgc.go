@@ -167,6 +167,7 @@ var heapminimum uint64 = defaultHeapMinimum
 const defaultHeapMinimum = 4 << 20
 
 // Initialized from $GOGC.  GOGC=off means no GC.
+// 触发垃圾收集的内存增长百分比，默认情况下为 100，即堆内存相比上次垃圾收集增长 100% 时应该触发 GC，并行的垃圾收集器会在到达该目标前完成垃圾收集
 var gcpercent int32
 
 func gcinit() {
@@ -248,12 +249,14 @@ func setGCPercent(in int32) (out int32) {
 
 // Garbage collector phase.
 // Indicates to write barrier and synchronization task to perform.
+// 垃圾收集器当前处于的阶段，可能处于 _GCoff、_GCmark 和 _GCmarktermination，Goroutine 在读取或者修改该阶段时需要保证原子性；
 var gcphase uint32
 
 // The compiler knows about this variable.
 // If you change it, you must change builtin/runtime.go, too.
 // If you change the first four bytes, you must also change the write
 // barrier insertion code.
+// 包含写屏障状态的结构体，其中的 enabled 字段表示写屏障的开启与关闭；
 var writeBarrier struct {
 	enabled bool    // compiler emits a check of this before calling write barrier
 	pad     [3]byte // compiler uses 32-bit load for "enabled" field
@@ -265,6 +268,7 @@ var writeBarrier struct {
 // gcBlackenEnabled is 1 if mutator assists and background mark
 // workers are allowed to blacken objects. This must only be set when
 // gcphase == _GCmark.
+// 当垃圾收集处于标记阶段时，该变量会被置为 1，在这里辅助垃圾收集的用户程序和后台标记的任务可以将对象涂黑；
 var gcBlackenEnabled uint32
 
 const (
@@ -336,6 +340,7 @@ var gcMarkWorkerModeStrings = [...]string{
 //
 // All fields of gcController are used only during a single mark
 // cycle.
+// 垃圾收集的调步算法，它能够决定触发并行垃圾收集的时间和待处理的工作；
 var gcController gcControllerState
 
 type gcControllerState struct {
@@ -1006,6 +1011,7 @@ const gcAssistTimeSlack = 5000
 // assist by pre-paying for this many bytes of future allocations.
 const gcOverAssistWork = 64 << 10
 
+// 包含很多垃圾收集相关的字段 表示完成的垃圾收集循环的次数、当前循环时间和 CPU 的利用率、垃圾收集的模式
 var work struct {
 	full  lfstack          // lock-free list of full blocks workbuf
 	empty lfstack          // lock-free list of empty blocks workbuf

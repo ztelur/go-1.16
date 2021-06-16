@@ -1038,6 +1038,7 @@ func startTheWorldGC() {
 }
 
 // Holding worldsema grants an M the right to try to stop the world.
+// 全局的信号量，获取该信号量的线程有权利暂停当前应用程序；
 var worldsema uint32 = 1
 
 // Holding gcsema grants the M the right to block a GC, and blocks
