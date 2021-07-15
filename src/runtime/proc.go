@@ -6179,6 +6179,7 @@ func sync_runtime_canSpin(i int) bool {
 	// GOMAXPROCS>1 and there is at least one other running P and local runq is empty.
 	// As opposed to runtime mutex we don't do passive spinning here,
 	// because there can be work on global runq or on other Ps.
+	// iter大等于4或者cpu核数小等于1，最大逻辑处理器大于1，至少有个本地的P队列，并且本地的P队列可运行G队列为空
 	if i >= active_spin || ncpu <= 1 || gomaxprocs <= int32(sched.npidle+sched.nmspinning)+1 {
 		return false
 	}

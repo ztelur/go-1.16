@@ -94,7 +94,8 @@ const (
 func semacquire(addr *uint32) {
 	semacquire1(addr, false, 0, 0)
 }
-
+//     semacquire函数首先检查信号量是否为0：如果大于0，让信号量减一，返回； 
+// 如果等于0，就调用goparkunlock函数，把当前Goroutine放入该sema的等待队列，并把他设为等待状态。
 func semacquire1(addr *uint32, lifo bool, profile semaProfileFlags, skipframes int) {
 	gp := getg()
 	if gp != gp.m.curg {
@@ -155,7 +156,7 @@ func semacquire1(addr *uint32, lifo bool, profile semaProfileFlags, skipframes i
 func semrelease(addr *uint32) {
 	semrelease1(addr, false, 0)
 }
-
+//     semrelease函数首先让信号量加一，然后检查是否有正在等待的Goroutine： 如果没有，直接返回；如果有，调用goready函数唤醒一个Goroutine。
 func semrelease1(addr *uint32, handoff bool, skipframes int) {
 	root := semroot(addr)
 	atomic.Xadd(addr, 1)
