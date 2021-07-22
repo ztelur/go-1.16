@@ -17,6 +17,7 @@ type Once struct {
 	// The hot path is inlined at every call site.
 	// Placing done first allows more compact instructions on some architectures (amd64/386),
 	// and fewer instructions (to calculate offset) on other architectures.
+	// flag 标记是否初始化
 	done uint32
 	m    Mutex
 }
@@ -39,6 +40,18 @@ type Once struct {
 // If f panics, Do considers it to have returned; future calls of Do return
 // without calling f.
 //
+/**
+所以，一个正确的 Once 实现要使用一个互斥锁，这样初始化的时候如果有并发的 goroutine，
+就会进入doSlow 方法。互斥锁的机制保证只有一个 goroutine 进行初始化，同时利用双检查的机制（
+double-checking），再次判断 o.done 是否为 0，如果为 0，则是第一次执行，执行完毕后，就将 
+o.done 设置为 1，然后释放锁。即使此时有多个 goroutine 同时进入了 doSlow 方法，
+因为双检查的机制，后续的 goroutine 会看到 o.done 的值为 1，也不会再次执行 
+f。这样既保证了并发的 goroutine 会等待 f 完成，而且还不会多次执行 f。
+
+
+这个实现有一个很大的问题，就是如果参数 f 执行很慢的话，后续调用 Do 方法的 goroutine 
+虽然看到 done 已经设置为执行过了，但是获取某些初始化资源的时候可能会得到空的资源，因为 f 还没有执行完。
+**/
 func (o *Once) Do(f func()) {
 	// Note: Here is an incorrect implementation of Do:
 	//
